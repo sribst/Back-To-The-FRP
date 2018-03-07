@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: 5307a1ba9170997b7b37a7295a2feaad)
+version = "0.2"
+description = "Back To The FRP. Functional Reactive Programming."
+requires = "bttfrp"
+archive(byte) = "editor.cma"
+archive(byte, plugin) = "editor.cma"
+archive(native) = "editor.cmxa"
+archive(native, plugin) = "editor.cmxs"
+exists_if = "editor.cma"
+# OASIS_STOP
+

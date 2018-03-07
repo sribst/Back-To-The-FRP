@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: b2bbce8bc8b6c278166d329a6c70acfc)
+version = "0.2"
+description = "Back To The FRP. Functional Reactive Programming."
+requires = "alcotest"
+archive(byte) = "test.cma"
+archive(byte, plugin) = "test.cma"
+archive(native) = "test.cmxa"
+archive(native, plugin) = "test.cmxs"
+exists_if = "test.cma"
+# OASIS_STOP
+

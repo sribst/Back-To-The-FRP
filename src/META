@@ -1,0 +1,11 @@
+# OASIS_START
+# DO NOT EDIT (digest: ca4428ca069ae69f92c1b243bcc704d4)
+version = "0.2"
+description = "Back To The FRP. Functional Reactive Programming."
+archive(byte) = "bttfrp.cma"
+archive(byte, plugin) = "bttfrp.cma"
+archive(native) = "bttfrp.cmxa"
+archive(native, plugin) = "bttfrp.cmxs"
+exists_if = "bttfrp.cma"
+# OASIS_STOP
+
