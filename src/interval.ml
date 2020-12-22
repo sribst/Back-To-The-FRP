@@ -1,93 +1,58 @@
-(**
-   [module IT](Interval Time) is the set of function to modify the set
-   of valid time of a signal
+type t = bool Time.Timemap.t
 
-   if a time is valid in the associated Timemap then the value
-   associated in the cache of the signal is valid
-   [itl] : iterval time list
- *)
+let empty = Time.Timemap.empty
 
-module Timemap = Time.Timemap
-
-(* type t = bool Timemap.t *)
-
-(** [valid itl t : bool Timemap.t -> time_t -> bool] is the validity
-  if the time [t].
-  if true then [t] is a valid time so the occurence at time [t] of the
-  associated signal is still valid and can be use
- *)
-let valid itl t =
-  let (l, b_o, _r) = Timemap.split t itl in
-  match b_o with
-  | Some b ->
-      (t, b)
+let valid time interval =
+  let (prior_time, current_opt, _after_time) =
+    Time.Timemap.split time interval
+  in
+  match current_opt with
+  | Some is_valid ->
+      (time, is_valid)
   | None ->
-      if Timemap.is_empty l then (Time.of_int (-1), false)
-      else Timemap.max_binding l
+      if Time.Timemap.is_empty prior_time then (Time.of_int (-1), false)
+      else Time.Timemap.max_binding prior_time
 
-(**
-      [clean itl] will prevent the list to have 2 consecutive equal
-      boolean value
-
-      TODO : Not the best way to do
- *)
-let clean itl =
-  let f t b =
-    let (t_prev, b_prev) = valid itl (Time.prev t) in
-    if t_prev < Time.origin || b_prev != b then true else false
+let clean interval =
+  let filter_f time should_be_valid =
+    let (time_prev, is_valid) = valid (Time.prev time) interval in
+    time_prev < Time.origin || is_valid <> should_be_valid
   in
-  Timemap.filter f itl
+  Time.Timemap.filter filter_f interval
 
-(**
-      [already_invalidate itl t : bool Timemap.t -> time_t -> bool]
-      prevent to invalidate an already invalidate [itl]
-
-      it is use to stop the loop in [S.fix] and reduce number of
-      calcul
- *)
-let already_invalidate itl t =
-  if Timemap.is_empty itl then false
+let already_invalidate interval time =
+  if Time.Timemap.is_empty interval then false
   else
-    let (t', b) = Timemap.max_binding itl in
-    (not b) && t' <= t
+    let (max_time, is_valid) = Time.Timemap.max_binding interval in
+    (not is_valid) && max_time <= time
 
-(**
-      [invalidate itl t : bool Timemap.t -> time_t -> bool Timemap.t]
-      is [itl] truncate at [t-1] and adding [(t,false)]
- *)
-let invalidate itl t =
-  if not (already_invalidate itl t) then
-    let itl = Timemap.filter (fun t' _ -> t' < t) itl in
-    let itl = Timemap.add t false itl in
-    clean itl
-  else itl
+let invalidate interval time =
+  if not (already_invalidate interval time) then
+    interval
+    |> Time.Timemap.filter (fun time' _is_valid -> time' < time)
+    |> Time.Timemap.add time false
+    |> clean
+  else interval
 
-(**
-      [validate itl t t'] is [itl] modified so that (at least)
-      [t] to [t'] is valid
+let validate interval time1 time2 =
+  let (_time_prev2, is_valid2) = valid time2 interval in
+  interval
+  |> Time.Timemap.filter (fun t _is_valid -> t < time1 || t > time2)
+  |> Time.Timemap.add time1 true
+  |> (fun interval ->
+       if (not is_valid2) && not (Time.Timemap.mem (Time.next time2) interval)
+       then Time.Timemap.add (Time.next time2) false interval
+       else interval)
+  |> clean
 
-      3 steps :
-      delete all value between t t'
-      add (t,true)
-      if t' was false then add (t'+1,false)
- *)
-let validate itl t t' =
-  let (_tb', b') = valid itl t' in
-  let itl = Timemap.filter (fun t'' _ -> t'' < t || t'' > t') itl in
-  let itl = Timemap.add t true itl in
-  let itl =
-    if (not b') && not (Timemap.mem (Time.next t') itl) then
-      Timemap.add (Time.next t') false itl
-    else itl
+let print interval name =
+  let str =
+    Time.Timemap.fold
+      (fun t b acc ->
+        Time.to_string t ^ " : " ^ string_of_bool b ^ " | " ^ acc)
+      interval
+      ""
   in
-  clean itl
-
-(**
-     [printf itl name] print all valid time of the signal with name 'name'
- *)
-let print itl name =
-  let to_str t b acc =
-    Time.to_string t ^ " : " ^ string_of_bool b ^ " | " ^ acc
-  in
-  let str = Timemap.fold to_str itl "" in
   Printf.printf "time %s : \n| %s\n" name str
+
+let fold = Time.Timemap.fold

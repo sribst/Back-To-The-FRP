@@ -1,55 +1,59 @@
-(**
-    Module Signal contain all the function of creation and interaction with
-    signal
- *)
+type signal_type = [`C | `D | `N]
 
-exception Not_primitive
+(* module type Signal = sig
+ *   type t
+ *
+ *   val primitive : bool
+ *
+ *   val cache : t Cache.t ref
+ *
+ *   val interval_time : Interval.t ref
+ *
+ *   val observe : bool -> Time.t -> t
+ *
+ *   val invalidate : Time.t -> unit
+ *
+ *   val definition : signal_type -> Time.t -> (Time.t * t) option
+ *
+ *   val refine : Time.t -> Time.t -> t -> unit
+ *
+ *   val push : Time.t -> unit
+ * end *)
 
-exception Before_origin
+(* type ('t, 'a) signal = (module Signal with type t = 'a) ref *)
 
-let refine (type o) s t (o : o) =
-  if Time.before_origin t then raise Before_origin
-  else
-    let module S = (val !s : Sig.Event with type t = o) in
-    if S.primitive then S.refine t t o else raise Not_primitive
-
-let observe (type o) ?(produce = true) e t =
-  if Time.before_origin t then raise Before_origin
-  else
-    let module E = (val !e : Sig.Event with type t = o) in
-    E.observe produce t
-
-let create (type o) sig_type =
+let create (type occ) sig_type =
   ref
     ( module struct
-      type t = o
+      type t = occ
 
-      let cache = ref Time.Timemap.empty
+      let cache = ref Cache.empty
 
-      let interval_time = ref Time.Timemap.empty
+      let interval_time = ref Interval.empty
 
       let production = ref []
 
       let primitive = true
 
-      let definition search_t t =
+      let definition sig_type time =
         let rec search = function
           | `D ->
-              Ca.occ !cache t
+              Cache.occurence time !cache
           | `C ->
-              Ca.last_occ !cache t
+              Cache.last_occurence time !cache
           | _ ->
               search sig_type
         in
-        search search_t
+        search sig_type
 
-      let invalidate_production t =
-        let invalidate (module S : Sig.Signal) = S.invalidate t in
-        List.iter invalidate !production
+      let invalidate_production time =
+        List.iter
+          (fun (module S : Sig.Signal) -> S.invalidate time)
+          !production
 
-      let refine t _ o =
-        cache := Ca.add !cache t o ;
-        invalidate_production t
+      let refine time _ occurence =
+        cache := Cache.add !cache time occurence ;
+        invalidate_production time
 
       let push _ = ()
 
@@ -67,18 +71,18 @@ let create (type o) sig_type =
             if produce then propagate t' ;
             o
     end : Sig.Event
-      with type t = o )
+      with type t = occ )
 
-let make (type o' o) sig_t e' definition_fct push_fct =
-  let module E' = (val !e' : Sig.Event with type t = o') in
-  let e =
+let make (type occ_t new_occ_t) ~signal_type ~event ~definition ~push =
+  let module Event = (val !event : Sig.Event with type t = occ_t) in
+  let new_event =
     ref
       ( module struct
-        type t = o
+        type t = new_occ_t
 
-        let cache = ref Time.Timemap.empty
+        let cache = ref Cache.empty
 
-        let interval_time = ref Time.Timemap.empty
+        let interval_time = ref Interval.empty
 
         let production = ref []
 
@@ -86,33 +90,32 @@ let make (type o' o) sig_t e' definition_fct push_fct =
 
         let refine t' t o =
           if t' < t then
-            cache :=
-              Time.Timemap.filter (fun t'' _ -> t'' < t' || t'' > t) !cache ;
-          cache := Ca.add !cache t' o ;
+            cache := Cache.filter (fun t'' _ -> t'' < t' || t'' > t) !cache ;
+          cache := Cache.add !cache t' o ;
           interval_time := Interval.validate !interval_time t' t
 
-        (* TODO if `C && b then return good value (possibly > at t' with previous_value  *)
+        (* TODO if `C && b then return good value (possibly > at t' with
+           previous_value *)
 
-        let definition search_t t =
-          let rec search = function
-            | `D ->
-                Ca.occ !cache t
-            | `C ->
-                Ca.last_occ !cache t
-            | _ ->
-                search sig_t
-          in
-          if Time.before_origin t then None
+        let rec search time = function
+          | `D ->
+              Cache.occurence time !cache
+          | `C ->
+              Cache.last_occurence time !cache
+          | `N ->
+              search time signal_type
+
+        let definition search_signal_type time =
+          if Time.before_origin time then None
           else
-            let (_, b) = Interval.valid !interval_time t in
-            (* no need of time value, as we just wanna know if t is valid, and we don't need to know from when it's valid *)
-            if b then search search_t
+            let (_time, is_valid) = Interval.valid time !interval_time in
+            if is_valid then search time search_signal_type
             else
-              match definition_fct t with
+              match definition time with
               | None ->
                   None
               | Some (t'', o) as t_o ->
-                  refine t'' t o ; t_o
+                  refine t'' time o ; t_o
 
         let invalidate_production t =
           let invalidate (module S : Sig.Signal) = S.invalidate t in
@@ -128,20 +131,20 @@ let make (type o' o) sig_t e' definition_fct push_fct =
           List.iter aux !production
 
         let push t =
-          match E'.definition `N t with
+          match Event.definition `N t with
           | None ->
               invalidate t (* cannot happend TODO clean that*)
           | Some (_, o) -> (
-            match push_fct t o with
+            match push t o with
             | None ->
                 invalidate t
             | Some (t, o) ->
                 refine t t o ; propagate t )
 
         let observe produce t =
-          let (_, b) = Interval.valid !interval_time t in
+          let (_, b) = Interval.valid t !interval_time in
           let not_valid = not b in
-          match definition sig_t t with
+          match definition signal_type t with
           | None ->
               raise Not_found
           | Some (t', o) ->
@@ -149,23 +152,24 @@ let make (type o' o) sig_t e' definition_fct push_fct =
               else if not_valid then invalidate_production t ;
               o
       end : Sig.Event
-        with type t = o )
+        with type t = new_occ_t )
   in
-  let module E = (val !e) in
-  E'.production := (module E : Sig.Signal) :: !E'.production ;
-  e
+  let module New_event = (val !new_event) in
+  Event.production := (module New_event : Sig.Signal) :: !Event.production ;
+  new_event
 
-let make2 (type o1 o2 o) sig_t e1 e2 definition_fct push_fct =
-  let module E1 = (val !e1 : Sig.Event with type t = o1) in
-  let module E2 = (val !e2 : Sig.Event with type t = o2) in
+let make2 (type occ_t1 occ_t2 new_occ_t) ~signal_type ~event1 ~event2
+    ~definition ~push =
+  let module Event1 = (val !event1 : Sig.Event with type t = occ_t1) in
+  let module Event2 = (val !event2 : Sig.Event with type t = occ_t2) in
   let e =
     ref
       ( module struct
-        type t = o
+        type t = new_occ_t
 
-        let cache = ref Time.Timemap.empty
+        let cache = ref Cache.empty
 
-        let interval_time = ref Time.Timemap.empty
+        let interval_time = ref Interval.empty
 
         let production = ref []
 
@@ -173,9 +177,8 @@ let make2 (type o1 o2 o) sig_t e1 e2 definition_fct push_fct =
 
         let refine t' t o =
           if t' < t then
-            cache :=
-              Time.Timemap.filter (fun t'' _ -> t'' < t' || t'' > t) !cache ;
-          cache := Ca.add !cache t' o ;
+            cache := Cache.filter (fun t'' _ -> t'' < t' || t'' > t) !cache ;
+          cache := Cache.add !cache t' o ;
           interval_time := Interval.validate !interval_time t' t
 
         (* HERE TODO new definition with `D & `C; del pull *)
@@ -184,18 +187,18 @@ let make2 (type o1 o2 o) sig_t e1 e2 definition_fct push_fct =
         let definition search_t t =
           let rec search = function
             | `D ->
-                Ca.occ !cache t
+                Cache.occurence t !cache
             | `C ->
-                Ca.last_occ !cache t
+                Cache.last_occurence t !cache
             | _ ->
-                search sig_t
+                search signal_type
           in
           if Time.before_origin t then None
           else
-            let (_, b) = Interval.valid !interval_time t in
+            let (_, b) = Interval.valid t !interval_time in
             if b then search search_t
             else
-              match definition_fct t with
+              match definition t with
               | None ->
                   None
               | Some (t'', o) as t_o ->
@@ -215,21 +218,21 @@ let make2 (type o1 o2 o) sig_t e1 e2 definition_fct push_fct =
           List.iter aux !production
 
         let push t =
-          match (E1.definition `N t, E2.definition `N t) with
+          match (Event1.definition `N t, Event2.definition `N t) with
           | (None, None) ->
               invalidate t
           (* TODO not possible as push is call when new occ*)
           | (o1, o2) -> (
-            match push_fct o1 o2 with
+            match push o1 o2 with
             | None ->
                 invalidate t
             | Some (t, o) ->
                 refine t t o ; propagate t )
 
         let observe produce t =
-          let (_, b) = Interval.valid !interval_time t in
+          let (_, b) = Interval.valid t !interval_time in
           let not_valid = not b in
-          match definition sig_t t with
+          match definition signal_type t with
           | None ->
               raise Not_found
           | Some (t', o) ->
@@ -237,22 +240,45 @@ let make2 (type o1 o2 o) sig_t e1 e2 definition_fct push_fct =
               else if not_valid then invalidate_production t ;
               o
       end : Sig.Event
-        with type t = o )
+        with type t = new_occ_t )
   in
   let module E = (val !e) in
-  E1.production := (module E : Sig.Signal) :: !E1.production ;
-  E2.production := (module E : Sig.Signal) :: !E2.production ;
+  Event1.production := (module E : Sig.Signal) :: !Event1.production ;
+  Event2.production := (module E : Sig.Signal) :: !Event2.production ;
   e
+
+exception Not_primitive
+
+exception Before_origin
+
+(* type signal_type = [`C | `D | `N] *)
+
+type ('t, 'a) event = ('t, 'a) Sig.event
+
+type ('t, 'a) signal = ('t, 'a) Sig.signal
+
+let refine (type occ) event time (occurence : occ) =
+  if Time.before_origin time then raise Before_origin
+  else
+    let module Event = (val !event : Sig.Event with type t = occ) in
+    if Event.primitive then Event.refine time time occurence
+    else raise Not_primitive
+
+let observe (type occ) ?(produce = true) event time =
+  if Time.before_origin time then raise Before_origin
+  else
+    let module Event = (val !event : Sig.Event with type t = occ) in
+    Event.observe produce time
 
 let empty (type o) e =
   let module E = (val !e : Sig.Event with type t = o) in
-  let _ = E.cache := Time.Timemap.empty in
-  E.interval_time := Time.Timemap.empty
+  let _ = E.cache := Cache.empty in
+  E.interval_time := Interval.empty
 
 (** {2 Debug function} *)
 let print_value (type o) e fct =
   let module E = (val !e : Sig.Event with type t = o) in
-  Ca.print !E.cache fct
+  Cache.print !E.cache fct
 
 let print_time (type o) e =
   let module E = (val !e : Sig.Event with type t = o) in
@@ -261,4 +287,4 @@ let print_time (type o) e =
 let get_vl_list (type o) e =
   let module E = (val !e : Sig.Event with type t = o) in
   let to_list t b acc = (Time.to_int t, b) :: acc in
-  Time.Timemap.fold to_list !E.interval_time []
+  Interval.fold to_list !E.interval_time []

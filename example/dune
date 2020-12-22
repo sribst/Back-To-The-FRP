@@ -1,0 +1,3 @@
+(executable
+ (name bash_editor)
+ (libraries bttfrp))

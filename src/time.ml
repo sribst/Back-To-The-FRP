@@ -29,14 +29,8 @@ let to_int t = (t : int)
 
 (* let min = min *)
 
-(**
-      [module Timemap]
-      Timemap is a simple map struct using time as key
-      A Timemap is use to save occurence of a signal (module Ca)
-      and another one to save valid time interval (module IT)
- *)
 module Timemap = Map.Make (struct
   type t = time
 
-  let compare x y = Stdlib.compare x y
+  let compare x y = Int.compare x y
 end)
