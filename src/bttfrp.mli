@@ -45,157 +45,113 @@
 
 (** {1 Interface} *)
 
-(** type du temps ( <=> Int) *)
-type time_t
-
 (** Interface du type T (Temps)  *)
-module T : sig
+module Time : sig
+  (** type du temps ( <=> Int) *)
+  type time
+
+  type t = time
+
   (** {1 création}*)
 
-  val origin : time_t
   (** Origine du temps ( <=> 0).*)
+  val origin : time
 
-  val next : time_t -> time_t
   (**[next t] le temps suivant.*)
+  val next : time -> time
 
-  val prev : time_t -> time_t
   (**[previous t] le temps precedent.*)
+  val prev : time -> time
 
   (** {1 égalité}*)
 
-  val (=)  : time_t -> time_t -> bool
   (**[t = t']: égalité de t et t'*)
+  val ( = ) : time -> time -> bool
 
-  val before_origin : time_t -> bool
   (**[before_origin t] t est en dehors du temps ([t < origin]) *)
+  val before_origin : time -> bool
 
   (** {1 cast}*)
 
-  val of_string : string -> time_t
   (**[of_string s] : temps égal à la valeur de l'entier dans le string
   [s]*)
+  val of_string : string -> time
 
-  val to_string : time_t -> string
   (**[to_string t] : string contenant un entier égal au temps
   renseigné *)
+  val to_string : time -> string
 
-  val of_int   : int    -> time_t
   (**[of_int t]: temps égal à la valeur de [t] *)
+  val of_int : int -> time
 
-  val to_int   : time_t -> int
-                             (**[to_int t]: int égal à la valeur de [t] *)
+  (**[to_int t]: int égal à la valeur de [t] *)
+  val to_int : time -> int
 end
 
-type ('t,'a) t
 (** type of event *)
+type ('t, 'a) t
 
-type d
 (** phantom type of discretes signals *)
+type discrete
 
-type c
 (** phantom type of continuous signals *)
-
-(** Signal
-
-Lien : {{!sigsem}semantics} de BTTFRP *)
-module S : sig
-  (** {1 Valeur du signal selon le temps} *)
-
-  val refine  : ('t,'a) t -> time_t -> 'a -> unit
-  (**
-      [refine e t o]
-      raffine le signal produit par l'évènement [e] par une occurence
-      de valeur [o] au temps [t]
-
-      [refine] ne peut etre utiliser (pour le moment) que sur des
-      évènements primitifs (cf lien pour primitif dans semantique)
-
-      si [e] n'est pas une primitive raise [Not_primitive]
-   *)
-
-  val observe : ?produce:bool -> ('t,'a) t -> time_t -> 'a
-  (**
-      [observe ~produce e t]: valeur de l'occurence du signal produit
-  par [e] au temps [t]
-      {ul
-      	  {- Si le signal est inexistant au temps [t] raise [Not_found] }
-	  {- [observe] s'utilise sur les évènements discrets et
-	     continues}
-	  {- [observe e] quand [e] n'est pas un évènement primitive va
-	     engendrer l'évaluation de tous les signaux dont [e] dépent}
-  	  {- [produce=true] : [observe] propage l'observation du signal
-	  produit par [e] dans l'ensemble des évènements dépendant de
-  [e]}
-      }
-   *)
-
-  val empty    : ('t,'a) t -> unit
-  (** [empty e] supprime toutes les occurences de e*)
-
-  (** {1 debug function}*)
-
-  val print_value      : ('t,'a) t -> ('a -> string ) -> string -> unit
-
-  val print_time       : ('t,'a) t -> string -> unit
-
-  val get_vl_list      : ('t,'a) t -> (int * bool) list
-
-end
+type continuous
 
 (** discrete event *)
-module D : sig
-
-  val create  : unit -> (d,'a) t
+module Discrete : sig
   (**
       [create ()] primitive event producing a signal of discrete occurence.
 
       the occurence are refine by the client using {{!S}S.refine}
    *)
+  val create : unit -> (discrete, 'a) t
 
-  val map     :  ('a -> 'b ) -> (d,'a) t -> (d,'b) t
-(**
+  (**
       [map fct e] apply [fct] to [e] occurences
- *)
-
+   *)
+  val map : ('a -> 'b) -> (discrete, 'a) t -> (discrete, 'b) t
 end
-
 
 (**
     continuous event
  *)
-module C : sig
-
-  val create   : unit -> (c,'a) t
+module Continuous : sig
   (**
      [create ()] is a primitive event producing continuous occurence
    *)
+  val create : unit -> (continuous, 'a) t
 
-  val map     :  ('a -> 'b ) -> (c,'a) t -> (c,'b) t
   (**
       [map fct e] apply [fct] to [e] occurences
    *)
+  val map : ('a -> 'b) -> (continuous, 'a) t -> (continuous, 'b) t
 
-  val map2     : ('a -> 'b -> 'c ) -> (c,'a) t -> (c,'b) t -> (c,'c) t
   (**
       [map2 fct e1 e2] apply [fct] to [e1] [e2] occurences
    *)
+  val map2 :
+    ('a -> 'b -> 'c) ->
+    (continuous, 'a) t ->
+    (continuous, 'b) t ->
+    (continuous, 'c) t
 
-  val complete : (d,'a) t -> (c,'a) t
   (** [complete e] transforme [e] discrete occurence to continuous occurence
 
 [e] must be a discrete combinator*)
+  val complete : (discrete, 'a) t -> (continuous, 'a) t
 
-  val complete_default : (d,'a) t -> 'a -> (c,'a) t
   (** [complete_default e d_o] is [e] occurence or d_o when [e] don't produce an occurence*)
+  val complete_default : (discrete, 'a) t -> 'a -> (continuous, 'a) t
 
-  val previous : 'a -> (c,'a) t -> (c,'a) t
   (** [previous d_o e] the previous occurence of [e] or d_o if [e] hasn't produce an occurence yet*)
+  val previous : 'a -> (continuous, 'a) t -> (continuous, 'a) t
 
-  val fix      : ((c,'a) t -> (c,'a) t * 'b) -> (c,'a) t * 'b
-                                                             (** [fix f] an event with a fix point, and a additional value*)
+  (** [fix f] an event with a fix point, and a additional value*)
+  val fix :
+    ((continuous, 'a) t -> (continuous, 'a) t * 'b) -> (continuous, 'a) t * 'b
 end
 
-             (** {1:sem Semantics}
+(** {1:sem Semantics}
     The following notations are used to give a precise meaning
     to events and signals.
 
@@ -252,5 +208,4 @@ end
 {1:basics Basics}
 
 {1:ex Examples}
-
-              *)
+                       *)
