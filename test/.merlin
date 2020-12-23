@@ -12,7 +12,8 @@ B /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/stdlib-shims
 B /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/uchar
 B /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/uuidm
 B /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/uutf
-B ../_build/default/test/.test.eobjs/byte
+B ../_build/default/src/.bttfrp.objs/byte
+B ../_build/default/test/.main.eobjs/byte
 S /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/alcotest
 S /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/alcotest/engine
 S /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/astring
@@ -26,5 +27,6 @@ S /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/stdlib-shims
 S /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/uchar
 S /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/uuidm
 S /home/baroud/.opam/ocaml-base-compiler.4.09.1/lib/uutf
+S ../src
 S .
 FLG -open Dune__exe -w @1..3@5..28@30..39@43@46..47@49..57@61..62-40 -strict-sequence -strict-formats -short-paths -keep-locs

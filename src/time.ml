@@ -1,5 +1,3 @@
-(** [module T] contain all the function to interact with the time *)
-
 type time = int
 
 type t = time
@@ -11,14 +9,10 @@ let next = succ
 
 let prev = pred
 
-(* let (>)  = (>) *)
-let ( < ) = ( < )
-
 let ( = ) = ( = )
 
 let before_origin x = x < origin
 
-(* let is_origin x = x = origin *)
 let of_string = int_of_string
 
 let to_string = string_of_int
@@ -26,8 +20,6 @@ let to_string = string_of_int
 let of_int t = (t : time)
 
 let to_int t = (t : int)
-
-(* let min = min *)
 
 module Timemap = Map.Make (struct
   type t = time
