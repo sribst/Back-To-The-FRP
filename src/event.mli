@@ -29,9 +29,10 @@ module Continuous : sig
 
   val complete : (discrete, 'a) event -> (continuous, 'a) event
 
-  val complete_default : (discrete, 'a) event -> 'a -> (continuous, 'a) event
+  val complete_default :
+    default:'a -> (discrete, 'a) event -> (continuous, 'a) event
 
-  val previous : 'a -> (continuous, 'a) event -> (continuous, 'a) event
+  val previous : origin:'a -> (continuous, 'a) event -> (continuous, 'a) event
 
   val fix :
     ((continuous, 'a) event -> (continuous, 'a) event * 'b) ->

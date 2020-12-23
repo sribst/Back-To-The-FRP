@@ -5,7 +5,7 @@ module type Sig = sig
 
   val observe : Time.t -> Time.t * t
 
-  val push : Time.t -> unit
+  val push : Time.t -> Time.t option
 
   val refine : Time.t -> Time.t -> t -> unit
 
@@ -17,7 +17,7 @@ module type Sig = sig
 
   val interval_time : Interval.t ref
 
-  val invalidate : Time.t -> unit
+  val invalidate : Time.t -> bool
 end
 
 type ('t, 'a) signal = (module Sig with type t = 'a) ref

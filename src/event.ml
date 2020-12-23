@@ -1,6 +1,8 @@
 module type Event = sig
   type t
 
+  val push : Time.t -> unit
+
   val signal : ('t, t) Signal.t
 
   val refine : Time.t -> Time.t -> t -> unit
@@ -18,7 +20,8 @@ end
 
 type ('t, 'a) event = (module Sig with type t = 'a) ref
 
-let make_event (type t) (signal : ('t, t) Signal.t) =
+let create (type t) signal_type =
+  let signal = Signal.create signal_type in
   ref
     ( module struct
       type nonrec t = t
@@ -28,22 +31,20 @@ let make_event (type t) (signal : ('t, t) Signal.t) =
       let production = ref []
 
       let propagate time =
-        let module S = (val !signal : Signal.Sig with type t = t) in
-        let aux (module E : Event) = S.push time in
-        List.iter aux !production
-
-      let observe produce t =
-        let module S = (val !signal : Signal.Sig with type t = t) in
-        let occ = S.observe t |> snd in
-        if produce then propagate t ;
-        occ
+        List.iter (fun (module E : Event) -> E.push time) !production
 
       let invalidate_production time =
         List.iter (fun (module E : Event) -> E.invalidate time) !production
 
-      let invalidate time =
+      let observe produce time =
         let module S = (val !signal : Signal.Sig with type t = t) in
-        S.invalidate time ; invalidate_production time
+        let (def_time, occ) = S.observe time in
+        if produce then propagate def_time ;
+        occ
+
+      let push _time = ()
+
+      let invalidate _time = ()
 
       let refine time1 time2 occurence =
         let module S = (val !signal : Signal.Sig with type t = t) in
@@ -52,13 +53,53 @@ let make_event (type t) (signal : ('t, t) Signal.t) =
     end : Sig
       with type t = t )
 
-let create signal_type = make_event @@ Signal.create signal_type
-
 let make (type t t') ~signal_type ~event ~definition ~push =
   let module Event = (val !event : Sig with type t = t) in
+  let signal =
+    Signal.make ~signal_type ~signal:Event.signal ~definition ~push
+  in
   let event =
-    make_event
-    @@ Signal.make ~signal_type ~signal:Event.signal ~definition ~push
+    ref
+      ( module struct
+        type nonrec t = t'
+
+        let signal = signal
+
+        let production = ref []
+
+        let refine =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          S.refine
+
+        let invalidate_production time =
+          List.iter (fun (module E : Event) -> E.invalidate time) !production
+
+        let invalidate time =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          if S.invalidate time then invalidate_production time
+
+        let propagate time =
+          List.iter
+            (fun (module E : Event) -> ignore (E.push time))
+            !production
+
+        let push time =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          match S.push time with
+          | Some push_time ->
+              propagate push_time
+          | None ->
+              ()
+
+        let observe produce time =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          let (_time, is_valid) = Interval.valid time !S.interval_time in
+          let (def_time, occ) = S.observe time in
+          if produce then propagate def_time
+          else if not is_valid then invalidate_production time ;
+          occ
+      end : Sig
+        with type t = t' )
   in
   let module Event = (val !event : Sig with type t = t') in
   Event.production := (module Event) :: !Event.production ;
@@ -67,18 +108,57 @@ let make (type t t') ~signal_type ~event ~definition ~push =
 let make2 (type t1 t2 t') ~signal_type ~event1 ~event2 ~definition ~push =
   let module Event1 = (val !event1 : Sig with type t = t1) in
   let module Event2 = (val !event2 : Sig with type t = t2) in
+  let signal =
+    Signal.make2
+      ~signal_type
+      ~signal1:Event1.signal
+      ~signal2:Event2.signal
+      ~definition
+      ~push
+  in
   let event =
-    make_event
-    @@ Signal.make2
-         ~signal_type
-         ~signal1:Event1.signal
-         ~signal2:Event2.signal
-         ~definition
-         ~push
+    ref
+      ( module struct
+        type nonrec t = t'
+
+        let signal = signal
+
+        let production = ref []
+
+        let refine =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          S.refine
+
+        let invalidate_production time =
+          List.iter (fun (module E : Event) -> E.invalidate time) !production
+
+        let invalidate time =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          if S.invalidate time then invalidate_production time
+
+        let propagate time =
+          List.iter (fun (module E : Event) -> E.push time) !production
+
+        let push time =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          match S.push time with
+          | Some push_time ->
+              propagate push_time
+          | None ->
+              ()
+
+        let observe produce time =
+          let module S = (val !signal : Signal.Sig with type t = t) in
+          let (_time, is_valid) = Interval.valid time !S.interval_time in
+          let (def_time, occ) = S.observe time in
+          if produce then propagate def_time
+          else if not is_valid then invalidate_production time ;
+          occ
+      end : Sig
+        with type t = t' )
   in
   let module Event = (val !event : Sig with type t = t') in
-  Event1.production := (module Event) :: !Event1.production ;
-  Event2.production := (module Event) :: !Event2.production ;
+  Event.production := (module Event) :: !Event.production ;
   event
 
 let event_definition (type t) event =
@@ -122,7 +202,7 @@ let complete signal_type event =
   let push time occ = Some (time, occ) in
   make ~signal_type ~event ~definition ~push
 
-let complete_default signal_type event default =
+let complete_default signal_type ~default event =
   let definition time =
     match event_definition event `C time with
     | None ->
@@ -134,7 +214,7 @@ let complete_default signal_type event default =
   let push time occ = Some (time, occ) in
   make ~signal_type ~event ~definition ~push
 
-let previous signal_type origin event =
+let previous signal_type ~origin event =
   let definition time =
     if Time.before_origin (Time.prev time) then Some (Time.origin, origin)
     else
@@ -147,14 +227,14 @@ let previous signal_type origin event =
   let push _time _occ = None (* Some (Time.next t, o) *) in
   make ~signal_type ~event ~definition ~push
 
-let fix (type o) sig_t f =
-  let e = create sig_t in
-  let (e', v) = f e in
-  let module E' = (val !e' : Sig with type t = o) in
-  let module E = (val !e : Sig with type t = o) in
-  E'.production := !E.production ;
-  e := !e' ;
-  (e, v)
+let fix (type t) signal_type ~fix_f =
+  let event = create signal_type in
+  let (event', fixpoint) = fix_f event in
+  let module Event = (val !event : Sig with type t = t) in
+  let module Event' = (val !event' : Sig with type t = t) in
+  Event'.production := !Event.production ;
+  event := !event' ;
+  (event, fixpoint)
 
 type discrete
 
@@ -163,9 +243,9 @@ type continuous
 module Discrete = struct
   let create () = create `D
 
-  let map fct e' = map `D fct e'
+  let map f event = map `D f event
 
-  let map2 fct e1 e2 = map2 `D fct e1 e2
+  let map2 f e1 e2 = map2 `D f e1 e2
 end
 
 module Continuous = struct
@@ -173,15 +253,15 @@ module Continuous = struct
 
   let map f event = map `C f event
 
-  let complete e' = complete `C e'
+  let complete event = complete `C event
 
-  let complete_default e' d_o = complete_default `C e' d_o
+  let complete_default ~default event = complete_default `C ~default event
 
   let map2 f e1 e2 = map2 `C f e1 e2
 
-  let previous d_o e' = previous `C d_o e'
+  let previous ~origin event = previous `C ~origin event
 
-  let fix f = fix `C f
+  let fix fix_f = fix `C ~fix_f
 end
 
 let refine (type t) event time occurence =
@@ -197,9 +277,9 @@ let empty (type t) event =
   Signal.empty E.signal
 
 (** {2 Debug function} *)
-let print_value (type t) event fct =
+let print_value (type t) event f =
   let module E = (val !event : Sig with type t = t) in
-  Signal.print_value E.signal fct
+  Signal.print_value E.signal f
 
 let print_time (type t) event =
   let module E = (val !event : Sig with type t = t) in

@@ -69,7 +69,7 @@ let user_eq i v = match (i, v) with (Nothing, Nothing) -> true | _ -> false
 
 let user = Event.Discrete.create ()
 
-let user_c = Event.Continuous.complete_default user Nothing
+let user_c = Event.Continuous.complete_default ~default:Nothing user
 
 let text_eq t t' =
   match (t, t') with
@@ -80,7 +80,7 @@ let text_eq t t' =
 
 let (text, ptext) =
   Event.Continuous.fix (fun text ->
-      let ptext = Event.Continuous.previous empty_text text in
+      let ptext = Event.Continuous.previous ~origin:empty_text text in
       (Event.Continuous.map2 f_text user_c ptext, ptext))
 
 let empty_all () =

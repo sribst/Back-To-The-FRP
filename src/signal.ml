@@ -5,7 +5,7 @@ module type Sig = sig
 
   val observe : Time.t -> Time.t * t
 
-  val push : Time.t -> unit
+  val push : Time.t -> Time.t option
 
   val refine : Time.t -> Time.t -> t -> unit
 
@@ -17,7 +17,7 @@ module type Sig = sig
 
   val interval_time : Interval.t ref
 
-  val invalidate : Time.t -> unit
+  val invalidate : Time.t -> bool
 end
 
 type ('t, 'a) signal = (module Sig with type t = 'a) ref
@@ -39,23 +39,22 @@ let create (type t) signal_type =
 
       let primitive = true
 
-      let push _time = ()
+      let push _time = None
 
-      let definition sig_type time =
-        let rec search = function
-          | `D ->
-              Cache.occurence time !cache
-          | `C ->
-              Cache.last_occurence time !cache
-          | _ ->
-              search sig_type
-        in
-        search signal_type
+      let invalidate _time = false
+
+      let rec search time = function
+        | `D ->
+            Cache.occurence time !cache
+        | `C ->
+            Cache.last_occurence time !cache
+        | `N ->
+            search time signal_type
+
+      let definition search_signal_type time = search time search_signal_type
 
       let refine time _time occurence =
         cache := Cache.add !cache time occurence
-
-      let invalidate _time = ()
 
       let observe time =
         match definition signal_type time with
@@ -79,8 +78,10 @@ let make (type t t') ~signal_type ~signal ~definition ~push =
       let primitive = false
 
       let invalidate t =
-        if not (Interval.already_invalidate !interval_time t) then
-          interval_time := Interval.invalidate !interval_time t
+        if not (Interval.already_invalidate !interval_time t) then (
+          interval_time := Interval.invalidate !interval_time t ;
+          true )
+        else false
 
       let refine time1 time2 occ =
         if time1 < time2 then
@@ -91,13 +92,16 @@ let make (type t t') ~signal_type ~signal ~definition ~push =
       let push time =
         match S.definition `N time with
         | None ->
-            invalidate time (* cannot happend TODO clean that*)
+            ignore (invalidate time) (* cannot happend TODO clean that*) ;
+            None
         | Some (_found_time, occ) -> (
           match push time occ with
           | None ->
-              invalidate time
-          | Some (time, occ) ->
-              refine time time occ )
+              ignore (invalidate time) ;
+              None
+          | Some (push_time, occ) ->
+              refine push_time push_time occ ;
+              Some push_time )
 
       let rec search time = function
         | `D ->
@@ -142,8 +146,10 @@ let make2 (type t1 t2 t') ~signal_type ~signal1 ~signal2 ~definition ~push =
       let primitive = false
 
       let invalidate t =
-        if not (Interval.already_invalidate !interval_time t) then
-          interval_time := Interval.invalidate !interval_time t
+        if not (Interval.already_invalidate !interval_time t) then (
+          interval_time := Interval.invalidate !interval_time t ;
+          true )
+        else false
 
       let refine time1 time2 occ =
         if time1 < time2 then
@@ -155,13 +161,16 @@ let make2 (type t1 t2 t') ~signal_type ~signal1 ~signal2 ~definition ~push =
         match (Signal1.definition `N time, Signal2.definition `N time) with
         | (None, None) ->
             (* TODO not possible as push is call when new occ*)
-            invalidate time
+            ignore (invalidate time) ;
+            None
         | (time_occ1, time_occ2) -> (
           match push time_occ1 time_occ2 with
           | None ->
-              invalidate time
-          | Some (_time, occ) ->
-              refine time time occ )
+              ignore (invalidate time) ;
+              None
+          | Some (push_time, occ) ->
+              refine push_time push_time occ ;
+              Some push_time )
 
       (* HERE TODO new definition with `D & `C; del pull *)
 
