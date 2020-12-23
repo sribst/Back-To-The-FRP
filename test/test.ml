@@ -1,12 +1,23 @@
 let refine_and_observe ~refine ~observe ~refine_list ~time_list =
   List.map2
-    (fun (time, occ) observed_time -> refine time occ ; observe observed_time)
+    (fun (time, occ) observed_time ->
+      Printf.printf "refining and observing time %d" observed_time ;
+      refine time occ ;
+      observe observed_time)
     refine_list
     time_list
 
 let refine_then_observe ~refine ~observe ~refine_list ~time_list =
-  List.iter (fun (time, occ) -> refine time occ) refine_list ;
-  List.map observe time_list
+  List.iter
+    (fun (time, occ) ->
+      Printf.printf "refining time %d" time ;
+      refine time occ)
+    refine_list ;
+  List.map
+    (fun time ->
+      Printf.printf "observing time %d" time ;
+      observe time)
+    time_list
 
 let test_observed_list ~case_name ~given_list ~expected_list ~occ_encoding =
   Alcotest.test_case case_name `Quick (fun () ->

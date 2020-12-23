@@ -1,13 +1,21 @@
+type signal_type = [`C | `D | `N]
+
 module type Event = sig
   type t
 
-  val push : Time.t -> unit
+  val primitive : bool
 
-  val signal : ('t, t) Signal.t
+  val definition : signal_type -> Time.t -> (Time.t * t) option
+
+  val cache : t Cache.t ref
+
+  val interval_time : Interval.t ref
+
+  val push : Time.t -> unit
 
   val refine : Time.t -> Time.t -> t -> unit
 
-  val observe : bool -> Time.t -> t
+  val observe : produce:bool -> Time.t -> t
 
   val invalidate : Time.t -> unit
 end
@@ -21,152 +29,257 @@ end
 type ('t, 'a) event = (module Sig with type t = 'a) ref
 
 let create (type t) signal_type =
-  let signal = Signal.create signal_type in
   ref
     ( module struct
       type nonrec t = t
 
-      let signal = signal
+      let cache = ref Cache.empty
+
+      let interval_time = ref Interval.empty
 
       let production = ref []
 
-      let propagate time =
-        List.iter (fun (module E : Event) -> E.push time) !production
+      let primitive = true
+
+      let rec search time = function
+        | `D ->
+            Cache.occurence time !cache
+        | `C ->
+            Cache.last_occurence time !cache
+        | _ ->
+            search time signal_type
+
+      let definition search_signal_type time = search time search_signal_type
 
       let invalidate_production time =
         List.iter (fun (module E : Event) -> E.invalidate time) !production
 
-      let observe produce time =
-        let module S = (val !signal : Signal.Sig with type t = t) in
-        let (def_time, occ) = S.observe time in
-        if produce then propagate def_time ;
-        occ
+      let refine time _time' occurence =
+        cache := Cache.add !cache time occurence ;
+        invalidate_production time
 
-      let push _time = ()
+      let push _ = ()
 
-      let invalidate _time = ()
+      let invalidate _ = ()
 
-      let refine time1 time2 occurence =
-        let module S = (val !signal : Signal.Sig with type t = t) in
-        S.refine time1 time2 occurence ;
-        invalidate_production time1
+      let propagate time =
+        List.iter (fun (module E : Event) -> E.push time) !production
+
+      let observe ~produce time =
+        match definition signal_type time with
+        | None ->
+            raise Not_found
+        | Some (def_time, occurence) ->
+            if produce then propagate def_time ;
+            occurence
     end : Sig
       with type t = t )
 
-let make (type t t') ~signal_type ~event ~definition ~push =
+let make (type t t') ~signal_type ~event ~definition:new_definition
+    ~push:new_push =
   let module Event = (val !event : Sig with type t = t) in
-  let signal =
-    Signal.make ~signal_type ~signal:Event.signal ~definition ~push
-  in
-  let event =
+  let new_event =
     ref
       ( module struct
         type nonrec t = t'
 
-        let signal = signal
+        let cache = ref Cache.empty
+
+        let interval_time = ref Interval.empty
 
         let production = ref []
 
-        let refine =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          S.refine
+        let primitive = false
+
+        let refine time1 time2 occ =
+          Printf.printf
+            "ref at time <%d,%d>\n"
+            (Time.to_int time1)
+            (Time.to_int time2) ;
+          if time1 < time2 then
+            cache := Cache.filter (fun t _ -> t < time1 || t > time2) !cache ;
+          cache := Cache.add !cache time1 occ ;
+          interval_time := Interval.validate !interval_time time1 time2
+
+        (* TODO if `C && b then return good value (possibly > at t' with previous_value  *)
+
+        let rec search time = function
+          | `D ->
+              Cache.occurence time !cache
+          | `C ->
+              Cache.last_occurence time !cache
+          | _ ->
+              search time signal_type
+
+        let definition search_signal_type time =
+          Printf.printf "definition at time %d\n" (Time.to_int time) ;
+          if Time.before_origin time then (
+            Printf.printf "definition at time %d = None\n" (Time.to_int time) ;
+            None )
+          else
+            let (_time, is_valid) = Interval.valid time !interval_time in
+            Printf.printf
+              "definition at time %d -> time is valid %b\n"
+              (Time.to_int time)
+              is_valid ;
+            if is_valid then (
+              Printf.printf
+                "definition time %d -> searching \n"
+                (Time.to_int time) ;
+              search time search_signal_type )
+            else (
+              Printf.printf
+                "definition time %d -> matching new_def\n"
+                (Time.to_int time) ;
+              match new_definition time with
+              | None ->
+                  Printf.printf
+                    "definition time %d -> new_def = None \n"
+                    (Time.to_int time) ;
+                  None
+              | Some (def_time, occ) as time_occ ->
+                  Printf.printf
+                    "definition time %d -> new_def = Some def_time %d \n"
+                    (Time.to_int time)
+                    (Time.to_int def_time) ;
+                  refine def_time time occ ;
+                  time_occ )
 
         let invalidate_production time =
           List.iter (fun (module E : Event) -> E.invalidate time) !production
 
         let invalidate time =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          if S.invalidate time then invalidate_production time
+          if not (Interval.already_invalidate !interval_time time) then (
+            interval_time := Interval.invalidate !interval_time time ;
+            invalidate_production time )
 
         let propagate time =
-          List.iter
-            (fun (module E : Event) -> ignore (E.push time))
-            !production
+          let aux (module E : Event) = E.push time in
+          List.iter aux !production
 
         let push time =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          match S.push time with
-          | Some push_time ->
-              propagate push_time
+          match Event.definition `N time with
           | None ->
-              ()
+              invalidate time
+          | Some (_def_time, occurence) -> (
+            match new_push time occurence with
+            | None ->
+                invalidate time
+            | Some (push_time, push_occ) ->
+                refine push_time push_time push_occ ;
+                propagate push_time )
 
-        let observe produce time =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          let (_time, is_valid) = Interval.valid time !S.interval_time in
-          let (def_time, occ) = S.observe time in
-          if produce then propagate def_time
-          else if not is_valid then invalidate_production time ;
-          occ
+        let observe ~produce time =
+          let (_time, is_valid) = Interval.valid time !interval_time in
+          match definition signal_type time with
+          | None ->
+              raise Not_found
+          | Some (def_time, occurence) ->
+              Printf.printf
+                "observing time %d; def_time %d"
+                (Time.to_int time)
+                (Time.to_int def_time) ;
+              if produce then propagate def_time
+              else if not is_valid then invalidate_production time ;
+              occurence
       end : Sig
         with type t = t' )
   in
-  let module Event = (val !event : Sig with type t = t') in
-  Event.production := (module Event) :: !Event.production ;
-  event
+  let module New_Event = (val !new_event : Sig with type t = t') in
+  Event.production := (module New_Event) :: !Event.production ;
+  new_event
 
 let make2 (type t1 t2 t') ~signal_type ~event1 ~event2 ~definition ~push =
   let module Event1 = (val !event1 : Sig with type t = t1) in
   let module Event2 = (val !event2 : Sig with type t = t2) in
-  let signal =
-    Signal.make2
-      ~signal_type
-      ~signal1:Event1.signal
-      ~signal2:Event2.signal
-      ~definition
-      ~push
-  in
-  let event =
+  let new_event =
     ref
       ( module struct
         type nonrec t = t'
 
-        let signal = signal
+        let cache = ref Cache.empty
+
+        let interval_time = ref Interval.empty
 
         let production = ref []
 
-        let refine =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          S.refine
+        let primitive = false
+
+        let refine time1 time2 occ =
+          if time1 < time2 then
+            cache := Cache.filter (fun t _ -> t < time1 || t > time2) !cache ;
+          cache := Cache.add !cache time1 occ ;
+          interval_time := Interval.validate !interval_time time1 time2
+
+        let rec search time = function
+          | `D ->
+              Cache.occurence time !cache
+          | `C ->
+              Cache.last_occurence time !cache
+          | `N ->
+              search time signal_type
+
+        (* HERE TODO new definition with `D & `C; del pull *)
+
+        (* HERE TODO, if `C && b then return good value (possibly > at t' with previous_value  *)
+        let definition search_signal_type time =
+          if Time.before_origin time then None
+          else
+            let (_time, is_valid) = Interval.valid time !interval_time in
+            if is_valid then search time search_signal_type
+            else
+              match definition time with
+              | None ->
+                  None
+              | Some (found_time, occ) as time_occ ->
+                  refine found_time time occ ; time_occ
 
         let invalidate_production time =
-          List.iter (fun (module E : Event) -> E.invalidate time) !production
+          let invalidate (module E : Event) = E.invalidate time in
+          List.iter invalidate !production
 
-        let invalidate time =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          if S.invalidate time then invalidate_production time
+        let invalidate t =
+          if not (Interval.already_invalidate !interval_time t) then (
+            interval_time := Interval.invalidate !interval_time t ;
+            invalidate_production t )
 
         let propagate time =
-          List.iter (fun (module E : Event) -> E.push time) !production
+          let aux (module E : Event) = E.push time in
+          List.iter aux !production
 
-        let push time =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          match S.push time with
-          | Some push_time ->
-              propagate push_time
+        let push t =
+          match (Event1.definition `N t, Event2.definition `N t) with
+          | (None, None) ->
+              invalidate t (* TODO not possible as push is call when new occ*)
+          | (o1, o2) -> (
+            match push o1 o2 with
+            | None ->
+                invalidate t
+            | Some (t, o) ->
+                refine t t o ; propagate t )
+
+        let observe ~produce time =
+          let (_, is_valid) = Interval.valid time !interval_time in
+          match definition signal_type time with
           | None ->
-              ()
-
-        let observe produce time =
-          let module S = (val !signal : Signal.Sig with type t = t) in
-          let (_time, is_valid) = Interval.valid time !S.interval_time in
-          let (def_time, occ) = S.observe time in
-          if produce then propagate def_time
-          else if not is_valid then invalidate_production time ;
-          occ
+              raise Not_found
+          | Some (def_time, occurence) ->
+              if produce then propagate def_time
+              else if not is_valid then invalidate_production def_time ;
+              occurence
       end : Sig
         with type t = t' )
   in
-  let module Event = (val !event : Sig with type t = t') in
-  Event.production := (module Event) :: !Event.production ;
-  event
+  let module New_Event = (val !new_event : Sig with type t = t') in
+  Event1.production := (module New_Event) :: !Event1.production ;
+  Event2.production := (module New_Event) :: !Event2.production ;
+  new_event
 
 let event_definition (type t) event =
   let module Event = (val !event : Sig with type t = t) in
-  let module S = (val !Event.signal : Signal.Sig with type t = t) in
-  S.definition
+  Event.definition
 
-let map signal_type f event =
+let map signal_type ~f event =
   let definition time =
     match event_definition event `C time with
     | None ->
@@ -177,7 +290,7 @@ let map signal_type f event =
   let push time occ = Some (time, f occ) in
   make ~signal_type ~event ~definition ~push
 
-let map2 signal_type f event1 event2 =
+let map2 signal_type ~f event1 event2 =
   let definition time =
     match
       ( event_definition event1 signal_type time,
@@ -224,17 +337,17 @@ let previous signal_type ~origin event =
       | Some (_time, o) ->
           Some (time, o)
   in
-  let push _time _occ = None (* Some (Time.next t, o) *) in
+  let push _time _occ = None in
   make ~signal_type ~event ~definition ~push
 
 let fix (type t) signal_type ~fix_f =
   let event = create signal_type in
-  let (event', fixpoint) = fix_f event in
-  let module Event = (val !event : Sig with type t = t) in
+  let (event', value) = fix_f event in
   let module Event' = (val !event' : Sig with type t = t) in
+  let module Event = (val !event : Sig with type t = t) in
   Event'.production := !Event.production ;
   event := !event' ;
-  (event, fixpoint)
+  (event, value)
 
 type discrete
 
@@ -243,48 +356,58 @@ type continuous
 module Discrete = struct
   let create () = create `D
 
-  let map f event = map `D f event
+  let map ~f event = map `D ~f event
 
-  let map2 f e1 e2 = map2 `D f e1 e2
+  let map2 ~f e1 e2 = map2 `D ~f e1 e2
 end
 
 module Continuous = struct
   let create () = create `C
 
-  let map f event = map `C f event
+  let map ~f event = map `C ~f event
+
+  let map2 ~f e1 e2 = map2 `C ~f e1 e2
 
   let complete event = complete `C event
 
   let complete_default ~default event = complete_default `C ~default event
 
-  let map2 f e1 e2 = map2 `C f e1 e2
-
   let previous ~origin event = previous `C ~origin event
 
-  let fix fix_f = fix `C ~fix_f
+  let fix ~fix_f = fix `C ~fix_f
 end
 
-let refine (type t) event time occurence =
-  let module E = (val !event : Sig with type t = t) in
-  E.refine time time occurence
+exception Not_primitive
 
-let observe (type t) event produce time =
-  let module E = (val !event : Sig with type t = t) in
-  E.observe produce time
+exception Before_origin
+
+let refine (type t) event time occurence =
+  if Time.before_origin time then raise Before_origin
+  else
+    let module E = (val !event : Sig with type t = t) in
+    if E.primitive then E.refine time time occurence else raise Not_primitive
+
+let observe (type t) ?(produce = true) event time =
+  if Time.before_origin time then raise Before_origin
+  else
+    let module E = (val !event : Sig with type t = t) in
+    E.observe ~produce time
 
 let empty (type t) event =
   let module E = (val !event : Sig with type t = t) in
-  Signal.empty E.signal
+  let _ = E.cache := Cache.empty in
+  E.interval_time := Interval.empty
 
 (** {2 Debug function} *)
-let print_value (type t) event f =
-  let module E = (val !event : Sig with type t = t) in
-  Signal.print_value E.signal f
+let print_value (type t) event fct =
+  let module Sig = (val !event : Sig with type t = t) in
+  Cache.print !Sig.cache fct
 
 let print_time (type t) event =
-  let module E = (val !event : Sig with type t = t) in
-  Signal.print_time E.signal
+  let module Sig = (val !event : Sig with type t = t) in
+  Interval.print !Sig.interval_time
 
 let get_interval_list (type t) event =
-  let module E = (val !event : Sig with type t = t) in
-  Signal.get_interval_list E.signal
+  let module Sig = (val !event : Sig with type t = t) in
+  let to_list time is_valid acc = (Time.to_int time, is_valid) :: acc in
+  Interval.fold to_list !Sig.interval_time []

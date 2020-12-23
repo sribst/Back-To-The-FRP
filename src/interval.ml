@@ -35,12 +35,12 @@ let invalidate interval time =
   else interval
 
 let validate interval time1 time2 =
-  let (_time_prev2, is_valid2) = valid time2 interval in
+  let (_time_prev2, is_valid) = valid time2 interval in
   interval
   |> Time.Timemap.filter (fun t _is_valid -> t < time1 || t > time2)
   |> Time.Timemap.add time1 true
   |> (fun interval ->
-       if (not is_valid2) && not (Time.Timemap.mem (Time.next time2) interval)
+       if (not is_valid) && not (Time.Timemap.mem (Time.next time2) interval)
        then Time.Timemap.add (Time.next time2) false interval
        else interval)
   |> clean
@@ -53,6 +53,6 @@ let print interval name =
       interval
       ""
   in
-  Printf.printf "time %s : \n| %s\n" name str
+  Printf.printf "interval time %s : \n| %s\n" name str
 
 let fold = Time.Timemap.fold

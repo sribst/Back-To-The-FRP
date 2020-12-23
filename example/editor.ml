@@ -67,9 +67,9 @@ let f_pr_user ac =
 
 let user_eq i v = match (i, v) with (Nothing, Nothing) -> true | _ -> false
 
-let user = Event.Discrete.create ()
+let user = Bttfrp.Discrete.create ()
 
-let user_c = Event.Continuous.complete_default ~default:Nothing user
+let user_c = Bttfrp.Continuous.complete_default ~default:Nothing user
 
 let text_eq t t' =
   match (t, t') with
@@ -79,11 +79,14 @@ let text_eq t t' =
       b
 
 let (text, ptext) =
-  Event.Continuous.fix (fun text ->
-      let ptext = Event.Continuous.previous ~origin:empty_text text in
-      (Event.Continuous.map2 f_text user_c ptext, ptext))
+  Bttfrp.Continuous.fix ~fix_f:(fun text ->
+      let ptext = Bttfrp.Continuous.previous ~origin:empty_text text in
+      (Bttfrp.Continuous.map2 ~f:f_text user_c ptext, ptext))
 
 let empty_all () =
-  Event.empty text ; Event.empty ptext ; Event.empty user ; Event.empty user_c
+  Bttfrp.empty text ;
+  Bttfrp.empty ptext ;
+  Bttfrp.empty user ;
+  Bttfrp.empty user_c
 
 let time t = Time.of_int t

@@ -1,3 +1,11 @@
+(library
+ (name editor)
+ (libraries bttfrp)
+ (modules editor))
+
+
 (executable
  (name bash_editor)
- (libraries bttfrp))
+ (libraries editor
+            bttfrp)
+ (modules bash_editor))

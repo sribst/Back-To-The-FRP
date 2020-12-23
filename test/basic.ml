@@ -1,6 +1,6 @@
-open Bttfrp
+module Time = Bttfrp.Time
 
-let empty refined_event = Event.empty refined_event
+let empty refined_event = Bttfrp.empty refined_event
 
 let print_time l =
   (List.fold_left
@@ -9,10 +9,21 @@ let print_time l =
      "")
     l
 
-let refine refined_event t o = Event.refine refined_event (Time.of_int t) o
+let refine event time occ =
+  Bttfrp.print_value event string_of_int "before refining event" ;
+  Bttfrp.print_time event "before refining event" ;
+  Bttfrp.refine event (Time.of_int time) occ ;
+  Bttfrp.print_value event string_of_int "after refining event" ;
+  Bttfrp.print_time event "after refining event"
 
 let observe ~event_name event time =
-  try Event.observe event false (Time.of_int time)
+  try
+    Bttfrp.print_value event string_of_int "before observing event" ;
+    Bttfrp.print_time event "before observing event" ;
+    let occ = Bttfrp.observe ~produce:false event (Time.of_int time) in
+    Bttfrp.print_value event string_of_int "after observing event" ;
+    Bttfrp.print_time event "after observing event" ;
+    occ
   with Not_found ->
     Alcotest.failf "event %s failed to be observed at time %d" event_name time
 
@@ -33,7 +44,7 @@ let check_refine_and_observe ~refined_event ~event_name ~observed_event ~refine
       ~refine:(refine refined_event)
       ~observe:(fun time ->
         ignore (observe ~event_name observed_event time) ;
-        List.rev (Event.get_interval_list observed_event))
+        List.rev (Bttfrp.get_interval_list observed_event))
       ~refine_list:time_occ_list
       ~time_list:tested_time_list
       ~expected_list:expected_interval_list ]
@@ -55,24 +66,24 @@ let check_refine_then_observe ~refined_event ~event_name ~observed_event
       ~refine:(refine refined_event)
       ~observe:(fun time ->
         ignore (observe ~event_name observed_event time) ;
-        List.rev (Event.get_interval_list observed_event))
+        List.rev (Bttfrp.get_interval_list observed_event))
       ~refine_list:time_occ_list
       ~time_list:tested_time_list
       ~expected_list:expected_interval_list ]
 
 let check_both_test_case ~create_event ~refine ~time_occ_list ~event_name
     ~observe ~tested_time_list ~expected_list ~expected_interval_list =
-  (let (refined_event, observed_event) = create_event () in
-   check_refine_and_observe
-     ~refined_event
-     ~event_name
-     ~observed_event
-     ~refine
-     ~time_occ_list
-     ~observe
-     ~tested_time_list
-     ~expected_list
-     ~expected_interval_list)
+  let (refined_event, observed_event) = create_event () in
+  check_refine_and_observe
+    ~refined_event
+    ~event_name
+    ~observed_event
+    ~refine
+    ~time_occ_list
+    ~observe
+    ~tested_time_list
+    ~expected_list
+    ~expected_interval_list
   @
   let (refined_event, observed_event) = create_event () in
   check_refine_then_observe
@@ -88,7 +99,7 @@ let check_both_test_case ~create_event ~refine ~time_occ_list ~event_name
 
 let test_primitive_discrete () =
   let create_event () =
-    let event = Event.Discrete.create () in
+    let event = Bttfrp.Discrete.create () in
     (event, event)
   in
   let name = "primitive discrete" in
@@ -108,7 +119,7 @@ let test_primitive_discrete () =
 
 let test_primitive_continuous () =
   let create_event () =
-    let event = Event.Continuous.create () in
+    let event = Bttfrp.Continuous.create () in
     (event, event)
   in
   let name = "primitive continuous" in
@@ -128,8 +139,10 @@ let test_primitive_continuous () =
 
 let test_map_discrete () =
   let create_event () =
-    let refined_event = Event.Discrete.create () in
-    let observed_event = Event.Discrete.map (fun x -> x + 5) refined_event in
+    let refined_event = Bttfrp.Discrete.create () in
+    let observed_event =
+      Bttfrp.Discrete.map ~f:(fun x -> x + 5) refined_event
+    in
     (refined_event, observed_event)
   in
   let event_name = "map discrete" in
@@ -161,8 +174,10 @@ let test_map_discrete () =
 
 let test_map_continuous () =
   let create_event () =
-    let refined_event = Event.Continuous.create () in
-    let observed_event = Event.Continuous.map (fun x -> x + 5) refined_event in
+    let refined_event = Bttfrp.Continuous.create () in
+    let observed_event =
+      Bttfrp.Continuous.map ~f:(fun x -> x + 5) refined_event
+    in
     (refined_event, observed_event)
   in
   let event_name = "map continous" in
@@ -194,8 +209,8 @@ let test_map_continuous () =
 
 let test_complete () =
   let create_event () =
-    let refined_event = Event.Discrete.create () in
-    let observed_event = Event.Continuous.complete refined_event in
+    let refined_event = Bttfrp.Discrete.create () in
+    let observed_event = Bttfrp.Continuous.complete refined_event in
     (refined_event, observed_event)
   in
   let event_name = "complete continuous" in
@@ -227,10 +242,12 @@ let test_complete () =
 
 let test_map2_continuous () =
   let create_event () =
-    let refined_event = Event.Continuous.create () in
-    let maped_event = Event.Continuous.map (fun x -> x * x) refined_event in
+    let refined_event = Bttfrp.Continuous.create () in
+    let maped_event =
+      Bttfrp.Continuous.map ~f:(fun x -> x * x) refined_event
+    in
     let observed_event =
-      Event.Continuous.map2 ( + ) refined_event maped_event
+      Bttfrp.Continuous.map2 ~f:( + ) refined_event maped_event
     in
     (refined_event, observed_event)
   in
@@ -253,10 +270,10 @@ let test_map2_continuous () =
 
 let test_fix_continuous () =
   let create_event () =
-    let refined_event = Event.Continuous.create () in
-    let (observed_event, _event) =
-      Event.Continuous.fix (fun event ->
-          let maped_event = Event.Continuous.map (fun x -> x + x) event in
+    let refined_event = Bttfrp.Continuous.create () in
+    let (observed_event, _other_event) =
+      Bttfrp.Continuous.fix ~fix_f:(fun event ->
+          let maped_event = Bttfrp.Continuous.map ~f:(fun x -> x + x) event in
           (maped_event, event))
     in
     (refined_event, observed_event)
@@ -283,6 +300,6 @@ let tests =
     ("continuous primitive", test_primitive_continuous ());
     ("discrete map", test_map_discrete ());
     ("continuous map", test_map_continuous ());
-    ("continuous map2", test_map2_continuous ())
-    (* ("continuous fix", test_fix_continuous ());
-     * ("continuous complete", test_complete ()) *) ]
+    ("continuous map2", test_map2_continuous ());
+    ("continuous complete", test_complete ());
+    ("continuous fix", test_fix_continuous ()) ]

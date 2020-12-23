@@ -1,13 +1,13 @@
-open Bttfrp
 open Editor
+module Time = Bttfrp.Time
 
 let t = ref Time.origin
 
 let online = ref true
 
-let pr_text = Event.Continuous.map f_pr_text text
+let pr_text = Bttfrp.Continuous.map ~f:f_pr_text text
 
-let pr_ptext = Event.Continuous.map f_pr_ptext ptext
+let pr_ptext = Bttfrp.Continuous.map ~f:f_pr_ptext ptext
 
 let print_v_t = function (l, r) -> "(" ^ l ^ "," ^ r ^ ")"
 
@@ -26,7 +26,7 @@ let print_v_u = function
 let observe t =
   Printf.printf "\nobserving time %s\n%!" (Time.to_string t) ;
   try
-    let txt = Event.observe text true t in
+    let txt = Bttfrp.observe ~produce:true text t in
     Printf.printf "value \"%s|%s\"\n" (fst txt) (snd txt)
   with Not_found ->
     Printf.printf "No value at time %s\n%!" (Time.to_string t)
@@ -35,7 +35,7 @@ let refine ac =
   if not !online then (
     Printf.printf "time to refine : " ;
     t := Time.of_string (read_line ()) ) ;
-  Event.refine user !t ac ;
+  Bttfrp.refine user !t ac ;
   if !online then (
     observe !t ;
     t := Time.next !t )

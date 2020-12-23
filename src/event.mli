@@ -7,10 +7,10 @@ type ('t, 'a) event
 module Discrete : sig
   val create : unit -> (discrete, 'a) event
 
-  val map : ('a -> 'b) -> (discrete, 'a) event -> (discrete, 'b) event
+  val map : f:('a -> 'b) -> (discrete, 'a) event -> (discrete, 'b) event
 
   val map2 :
-    ('a -> 'b -> 'c) ->
+    f:('a -> 'b -> 'c) ->
     (discrete, 'a) event ->
     (discrete, 'b) event ->
     (discrete, 'c) event
@@ -19,10 +19,10 @@ end
 module Continuous : sig
   val create : unit -> (continuous, 'a) event
 
-  val map : ('a -> 'b) -> (continuous, 'a) event -> (continuous, 'b) event
+  val map : f:('a -> 'b) -> (continuous, 'a) event -> (continuous, 'b) event
 
   val map2 :
-    ('a -> 'b -> 'c) ->
+    f:('a -> 'b -> 'c) ->
     (continuous, 'a) event ->
     (continuous, 'b) event ->
     (continuous, 'c) event
@@ -35,13 +35,13 @@ module Continuous : sig
   val previous : origin:'a -> (continuous, 'a) event -> (continuous, 'a) event
 
   val fix :
-    ((continuous, 'a) event -> (continuous, 'a) event * 'b) ->
+    fix_f:((continuous, 'a) event -> (continuous, 'a) event * 'b) ->
     (continuous, 'a) event * 'b
 end
 
 val refine : ('t, 'a) event -> Time.t -> 'a -> unit
 
-val observe : ('t, 'a) event -> bool -> Time.t -> 'a
+val observe : ?produce:bool -> ('t, 'a) event -> Time.t -> 'a
 
 val empty : ('t, 'a) event -> unit
 

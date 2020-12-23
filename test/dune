@@ -1,4 +1,5 @@
 (test
  (name main)
  (libraries alcotest
-            bttfrp))
+            bttfrp
+            editor))

@@ -21,6 +21,7 @@ let filter = Time.Timemap.filter
 let print cache pp name =
   Printf.printf "\nValue %s :\n%!" name ;
   Time.Timemap.iter
-    (fun i v -> Printf.printf "| %d : %s %!" (Time.to_int i) (pp v))
+    (fun time occ ->
+      Printf.printf "| (%d : %s) %!" (Time.to_int time) (pp occ))
     cache ;
   Printf.printf "|\n\n%!"
