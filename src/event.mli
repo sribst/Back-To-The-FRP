@@ -2,7 +2,7 @@ type discrete
 
 type continuous
 
-type ('t, 'a) event = ('t, 'a) Sig.event
+type ('t, 'a) event
 
 module Discrete : sig
   val create : unit -> (discrete, 'a) event
@@ -37,3 +37,15 @@ module Continuous : sig
     ((continuous, 'a) event -> (continuous, 'a) event * 'b) ->
     (continuous, 'a) event * 'b
 end
+
+val refine : ('t, 'a) event -> Time.t -> 'a -> unit
+
+val observe : ('t, 'a) event -> bool -> Time.t -> 'a
+
+val empty : ('t, 'a) event -> unit
+
+val print_value : ('t, 'a) event -> ('a -> string) -> string -> unit
+
+val print_time : ('t, 'a) event -> string -> unit
+
+val get_interval_list : ('t, 'a) event -> (int * bool) list

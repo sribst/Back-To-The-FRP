@@ -84,9 +84,6 @@ let (text, ptext) =
       (Event.Continuous.map2 f_text user_c ptext, ptext))
 
 let empty_all () =
-  Signal.empty text ;
-  Signal.empty ptext ;
-  Signal.empty user ;
-  Signal.empty user_c
+  Event.empty text ; Event.empty ptext ; Event.empty user ; Event.empty user_c
 
 let time t = Time.of_int t

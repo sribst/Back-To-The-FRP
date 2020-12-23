@@ -25,7 +25,9 @@ let print_v_u = function
 
 let observe t =
   Printf.printf "\nobserving time %s\n%!" (Time.to_string t) ;
-  try ignore (Signal.observe text t)
+  try
+    let txt = Event.observe text true t in
+    Printf.printf "value \"%s|%s\"\n" (fst txt) (snd txt)
   with Not_found ->
     Printf.printf "No value at time %s\n%!" (Time.to_string t)
 
@@ -33,7 +35,7 @@ let refine ac =
   if not !online then (
     Printf.printf "time to refine : " ;
     t := Time.of_string (read_line ()) ) ;
-  Signal.refine user !t ac ;
+  Event.refine user !t ac ;
   if !online then (
     observe !t ;
     t := Time.next !t )
@@ -79,7 +81,7 @@ let help () =
     "les deux modes :\n\
      \t\t   Online  : chaque nouvelle user_action seras inscrit dans la \
      timeline au temps courant et l'observation de user se feras directement\n\
-     \t\t   offline : Il faut renseigner un temps pour chaque user_action, et \
+     \t\t   Offline : Il faut renseigner un temps pour chaque user_action, et \
      aucune observation n'est faite\n\
      \t\t   action  :\n\
      \t\t   'l' -> user_action = deplace le curseur à gauche\n\

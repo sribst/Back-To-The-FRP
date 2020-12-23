@@ -27,13 +27,15 @@ type ('t, 'a) event
 module Signal : sig
   type signal_type = [`C | `D | `N]
 
-  val refine : ('t, 'a) event -> Time.t -> 'a -> unit
+  type ('t, 'a) signal
 
-  val observe : ?produce:bool -> ('t, 'a) event -> Time.t -> 'a
+  val refine : ('t, 'a) signal -> Time.t -> 'a -> unit
 
-  val create : signal_type -> ('t, 'a) event
+  val observe : ('t, 'a) signal -> Time.t -> 'a
 
-  val empty : ('t, 'a) event -> unit
+  val create : signal_type -> ('t, 'a) signal
+
+  val empty : ('t, 'a) signal -> unit
 end
 
 module Event : sig
@@ -68,4 +70,16 @@ module Event : sig
       ((continuous, 'a) event -> (continuous, 'a) event * 'b) ->
       (continuous, 'a) event * 'b
   end
+
+  val refine : ('t, 'a) event -> Time.t -> 'a -> unit
+
+  val observe : ('t, 'a) event -> bool -> Time.t -> 'a
+
+  val empty : ('t, 'a) event -> unit
+
+  val print_value : ('t, 'a) event -> ('a -> string) -> string -> unit
+
+  val print_time : ('t, 'a) event -> string -> unit
+
+  val get_interval_list : ('t, 'a) event -> (int * bool) list
 end

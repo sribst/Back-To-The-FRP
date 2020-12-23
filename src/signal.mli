@@ -1,36 +1,56 @@
-type ('t, 'a) event = ('t, 'a) Sig.event
+type signal_type = [`C | `D | `N]
 
-type signal_type = Sig.signal_type
+module type Sig = sig
+  type t
+
+  val observe : Time.t -> Time.t * t
+
+  val push : Time.t -> unit
+
+  val refine : Time.t -> Time.t -> t -> unit
+
+  val definition : signal_type -> Time.t -> (Time.t * t) option
+
+  val primitive : bool
+
+  val cache : t Cache.t ref
+
+  val interval_time : Interval.t ref
+
+  val invalidate : Time.t -> unit
+end
+
+type ('t, 'a) signal = (module Sig with type t = 'a) ref
+
+type ('t, 'a) t = ('t, 'a) signal
+
+val create : signal_type -> ('t, 'a) signal
 
 val make :
   signal_type:signal_type ->
-  event:('t, 'a) event ->
+  signal:('t, 'a) signal ->
   definition:(Time.time -> (Time.time * 'b) option) ->
   push:(Time.time -> 'a -> (Time.time * 'b) option) ->
-  ('t, 'b) event
+  ('t, 'b) signal
 
 val make2 :
   signal_type:signal_type ->
-  event1:('t, 'a) event ->
-  event2:('t, 'b) event ->
+  signal1:('t, 'a) signal ->
+  signal2:('t, 'b) signal ->
   definition:(Time.time -> (Time.time * 'c) option) ->
   push:((Time.time * 'a) option ->
        (Time.time * 'b) option ->
        (Time.time * 'c) option) ->
-  ('t, 'c) event
+  ('t, 'c) t
 
-type ('t, 'a) signal = ('t, 'a) Sig.signal
+val refine : ('t, 'a) signal -> Time.t -> 'a -> unit
 
-val refine : ('t, 'a) event -> Time.t -> 'a -> unit
+val observe : ('t, 'a) signal -> Time.t -> 'a
 
-val observe : ?produce:bool -> ('t, 'a) event -> Time.t -> 'a
+val empty : ('t, 'a) signal -> unit
 
-val create : signal_type -> ('t, 'a) event
+val print_value : ('t, 'a) signal -> ('a -> string) -> string -> unit
 
-val empty : ('t, 'a) event -> unit
+val print_time : ('t, 'a) signal -> string -> unit
 
-val print_value : ('t, 'a) event -> ('a -> string) -> string -> unit
-
-val print_time : ('t, 'a) event -> string -> unit
-
-val get_vl_list : ('t, 'a) event -> (int * bool) list
+val get_interval_list : ('t, 'a) signal -> (int * bool) list
