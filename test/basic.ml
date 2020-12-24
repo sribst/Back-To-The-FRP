@@ -1,34 +1,14 @@
 module Time = Bttfrp.Time
 
-let empty refined_event = Bttfrp.empty refined_event
-
-let print_time l =
-  (List.fold_left
-     (fun acc (t, b) ->
-       " (" ^ string_of_int t ^ "," ^ string_of_bool b ^ ") " ^ acc)
-     "")
-    l
-
-let refine event time occ =
-  Bttfrp.print_value event string_of_int "before refining event" ;
-  Bttfrp.print_time event "before refining event" ;
-  Bttfrp.refine event (Time.of_int time) occ ;
-  Bttfrp.print_value event string_of_int "after refining event" ;
-  Bttfrp.print_time event "after refining event"
+let refine event time occ = Bttfrp.refine event (Time.of_int time) occ
 
 let observe ~event_name event time =
-  try
-    Bttfrp.print_value event string_of_int "before observing event" ;
-    Bttfrp.print_time event "before observing event" ;
-    let occ = Bttfrp.observe ~produce:false event (Time.of_int time) in
-    Bttfrp.print_value event string_of_int "after observing event" ;
-    Bttfrp.print_time event "after observing event" ;
-    occ
+  try Bttfrp.observe ~produce:false event (Time.of_int time)
   with Not_found ->
     Alcotest.failf "event %s failed to be observed at time %d" event_name time
 
 let check_refine_and_observe ~refined_event ~event_name ~observed_event ~refine
-    ~time_occ_list ~observe ~tested_time_list ~expected_list
+    ~observe ~time_occ_list ~tested_time_list ~expected_list
     ~expected_interval_list =
   [ Test.test_refine_and_observe
       ~name:"occurence"
@@ -50,13 +30,13 @@ let check_refine_and_observe ~refined_event ~event_name ~observed_event ~refine
       ~expected_list:expected_interval_list ]
 
 let check_refine_then_observe ~refined_event ~event_name ~observed_event
-    ~refine ~time_occ_list ~observe ~tested_time_list ~expected_list
+    ~refine ~observe ~time_occ_list ~tested_time_list ~expected_list
     ~expected_interval_list =
   [ Test.test_refine_then_observe
       ~name:"occurence"
       ~occ_encoding:Alcotest.int
-      ~refine:(refine refined_event)
       ~refine_list:time_occ_list
+      ~refine:(refine refined_event)
       ~observe:(observe ~event_name observed_event)
       ~time_list:tested_time_list
       ~expected_list;
@@ -71,16 +51,17 @@ let check_refine_then_observe ~refined_event ~event_name ~observed_event
       ~time_list:tested_time_list
       ~expected_list:expected_interval_list ]
 
-let check_both_test_case ~create_event ~refine ~time_occ_list ~event_name
-    ~observe ~tested_time_list ~expected_list ~expected_interval_list =
+let check_both_test_case ?(refine = refine) ?(observe = observe) ~create_event
+    ~time_occ_list ~event_name ~tested_time_list ~expected_list
+    ~expected_interval_list () =
   let (refined_event, observed_event) = create_event () in
   check_refine_and_observe
+    ~refine
+    ~observe
     ~refined_event
     ~event_name
     ~observed_event
-    ~refine
     ~time_occ_list
-    ~observe
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
@@ -110,12 +91,11 @@ let test_primitive_discrete () =
   check_both_test_case
     ~create_event
     ~event_name:name
-    ~refine
     ~time_occ_list
-    ~observe
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
+    ()
 
 let test_primitive_continuous () =
   let create_event () =
@@ -130,12 +110,11 @@ let test_primitive_continuous () =
   check_both_test_case
     ~create_event
     ~event_name:name
-    ~refine
     ~time_occ_list
-    ~observe
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
+    ()
 
 let test_map_discrete () =
   let create_event () =
@@ -171,6 +150,7 @@ let test_map_discrete () =
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
+    ()
 
 let test_map_continuous () =
   let create_event () =
@@ -206,6 +186,7 @@ let test_map_continuous () =
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
+    ()
 
 let test_complete () =
   let create_event () =
@@ -239,6 +220,7 @@ let test_complete () =
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
+    ()
 
 let test_map2_continuous () =
   let create_event () =
@@ -267,33 +249,69 @@ let test_map2_continuous () =
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
+    ()
 
 let test_fix_continuous () =
   let create_event () =
     let refined_event = Bttfrp.Continuous.create () in
-    let (observed_event, _other_event) =
+    let (fibo, _) =
       Bttfrp.Continuous.fix ~fix_f:(fun event ->
-          let maped_event = Bttfrp.Continuous.map ~f:(fun x -> x + x) event in
-          (maped_event, event))
+          let previous_event = Bttfrp.Continuous.previous ~origin:1 event in
+          let previous_event2 =
+            Bttfrp.Continuous.previous ~origin:0 previous_event
+          in
+          let fibo_event =
+            Bttfrp.Continuous.map2
+              ~f:(fun x y -> x + y)
+              previous_event
+              previous_event2
+          in
+          (fibo_event, ()))
     in
-    (refined_event, observed_event)
+    (refined_event, fibo)
   in
   let event_name = "fix continuous" in
-  let time_occ_list = [(0, 0); (2, 2); (4, 4)] in
-  let tested_time_list = [1; 3; 5] in
-  let expected_list = [0; 4; 16] in
+  let time_occ_list =
+    (* empty list needed because we need the refined_list to be the same size as expected_list *)
+    [ (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0);
+      (0, 0) ]
+  in
+  let tested_time_list = [0; 1; 2; 3; 4; 5; 6; 7; 8; 9; 10; 11] in
+  let expected_list = [1; 2; 3; 5; 8; 13; 21; 34; 55; 89; 144; 233] in
   let expected_interval_list =
-    [[(0, true); (2, false)]; [(0, true); (4, false)]; [(0, true); (6, false)]]
+    [ [(0, false)];
+      [(0, true); (1, false)];
+      [(0, true); (2, false)];
+      [(0, true); (3, false)];
+      [(0, true); (4, false)];
+      [(0, true); (5, false)];
+      [(0, true); (6, false)];
+      [(0, true); (7, false)];
+      [(0, true); (8, false)];
+      [(0, true); (9, false)];
+      [(0, true); (10, false)];
+      [(0, true); (11, false)] ]
   in
   check_both_test_case
     ~create_event
     ~event_name
-    ~refine
+    ~refine:(fun _event _time _occ -> ())
     ~time_occ_list
     ~observe
     ~tested_time_list
     ~expected_list
     ~expected_interval_list
+    ()
 
 let tests =
   [ ("discrete primitive", test_primitive_discrete ());

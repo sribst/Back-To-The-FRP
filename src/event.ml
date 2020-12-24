@@ -92,10 +92,6 @@ let make (type t t') ~signal_type ~event ~definition:new_definition
         let primitive = false
 
         let refine time1 time2 occ =
-          Printf.printf
-            "ref at time <%d,%d>\n"
-            (Time.to_int time1)
-            (Time.to_int time2) ;
           if time1 < time2 then
             cache := Cache.filter (fun t _ -> t < time1 || t > time2) !cache ;
           cache := Cache.add !cache time1 occ ;
@@ -112,38 +108,16 @@ let make (type t t') ~signal_type ~event ~definition:new_definition
               search time signal_type
 
         let definition search_signal_type time =
-          Printf.printf "definition at time %d\n" (Time.to_int time) ;
-          if Time.before_origin time then (
-            Printf.printf "definition at time %d = None\n" (Time.to_int time) ;
-            None )
+          if Time.before_origin time then None
           else
             let (_time, is_valid) = Interval.valid time !interval_time in
-            Printf.printf
-              "definition at time %d -> time is valid %b\n"
-              (Time.to_int time)
-              is_valid ;
-            if is_valid then (
-              Printf.printf
-                "definition time %d -> searching \n"
-                (Time.to_int time) ;
-              search time search_signal_type )
-            else (
-              Printf.printf
-                "definition time %d -> matching new_def\n"
-                (Time.to_int time) ;
+            if is_valid then search time search_signal_type
+            else
               match new_definition time with
               | None ->
-                  Printf.printf
-                    "definition time %d -> new_def = None \n"
-                    (Time.to_int time) ;
                   None
               | Some (def_time, occ) as time_occ ->
-                  Printf.printf
-                    "definition time %d -> new_def = Some def_time %d \n"
-                    (Time.to_int time)
-                    (Time.to_int def_time) ;
-                  refine def_time time occ ;
-                  time_occ )
+                  refine def_time time occ ; time_occ
 
         let invalidate_production time =
           List.iter (fun (module E : Event) -> E.invalidate time) !production
@@ -175,10 +149,6 @@ let make (type t t') ~signal_type ~event ~definition:new_definition
           | None ->
               raise Not_found
           | Some (def_time, occurence) ->
-              Printf.printf
-                "observing time %d; def_time %d"
-                (Time.to_int time)
-                (Time.to_int def_time) ;
               if produce then propagate def_time
               else if not is_valid then invalidate_production time ;
               occurence

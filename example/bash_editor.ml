@@ -7,7 +7,7 @@ let online = ref true
 
 let pr_text = Bttfrp.Continuous.map ~f:f_pr_text text
 
-let pr_ptext = Bttfrp.Continuous.map ~f:f_pr_ptext ptext
+let pr_ptext = Bttfrp.Continuous.map ~f:f_pr_ptext previous_text
 
 let print_v_t = function (l, r) -> "(" ^ l ^ "," ^ r ^ ")"
 

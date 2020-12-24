@@ -28,18 +28,18 @@ let del n = function
 
 let insert s = function (ltext, rtext) -> (ltext ^ s, rtext)
 
-let f_text user ptext =
+let action user previous_text =
   match user with
   | Left n ->
-      left n ptext
+      left n previous_text
   | Right n ->
-      right n ptext
+      right n previous_text
   | Del n ->
-      del n ptext
+      del n previous_text
   | Insert s ->
-      insert s ptext
+      insert s previous_text
   | Nothing ->
-      ptext
+      previous_text
 
 let f_pr_text = function
   | (ltext, rtext) ->
@@ -47,7 +47,7 @@ let f_pr_text = function
 
 let f_pr_ptext = function
   | (ltext, rtext) ->
-      Printf.printf "ptext %s|%s\n" ltext rtext
+      Printf.printf "previous_text %s|%s\n" ltext rtext
 
 let f_pr_user ac =
   let s =
@@ -69,7 +69,7 @@ let user_eq i v = match (i, v) with (Nothing, Nothing) -> true | _ -> false
 
 let user = Bttfrp.Discrete.create ()
 
-let user_c = Bttfrp.Continuous.complete_default ~default:Nothing user
+let user_continuous = Bttfrp.Continuous.complete_default ~default:Nothing user
 
 let text_eq t t' =
   match (t, t') with
@@ -78,15 +78,16 @@ let text_eq t t' =
       (* Printf.printf "%B %s|%s , %s|%s\n" b l r l' r'; *)
       b
 
-let (text, ptext) =
+let (text, previous_text) =
   Bttfrp.Continuous.fix ~fix_f:(fun text ->
-      let ptext = Bttfrp.Continuous.previous ~origin:empty_text text in
-      (Bttfrp.Continuous.map2 ~f:f_text user_c ptext, ptext))
+      let previous_text = Bttfrp.Continuous.previous ~origin:empty_text text in
+      ( Bttfrp.Continuous.map2 ~f:action user_continuous previous_text,
+        previous_text ))
 
 let empty_all () =
   Bttfrp.empty text ;
-  Bttfrp.empty ptext ;
+  Bttfrp.empty previous_text ;
   Bttfrp.empty user ;
-  Bttfrp.empty user_c
+  Bttfrp.empty user_continuous
 
 let time t = Time.of_int t
